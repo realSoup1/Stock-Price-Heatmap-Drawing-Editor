@@ -67,8 +67,11 @@ with col2:
         plot_df["涨跌幅%"] = plot_df["涨跌幅%"].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         plot_df["涨跌幅%"] = pd.to_numeric(plot_df["涨跌幅%"], errors='coerce').fillna(0)
         
-        # 智能换行
-        plot_df["换行名称"] = plot_df["行业名称"].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=10)))
+        # --- 核心修复 1：语法正确的智能换行，绝对不截断单词 ---
+        # width=12 表示尽量在 12 个字符左右寻找空格换行，break_long_words=False 禁止暴力截断长单词
+        plot_df["换行名称"] = plot_df["行业名称"].apply(
+            lambda x: "<br>".join(textwrap.wrap(str(x), width=12, break_long_words=False))
+        )
         
         # 给正数加上 '+' 号，保留 1 位小数
         plot_df["展示涨跌幅"] = plot_df["涨跌幅%"].apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
@@ -79,8 +82,7 @@ with col2:
             path=["换行名称"], 
             values="市值", 
             color="涨跌幅%", 
-            # ✅ 这里的颜色顺序已经反转，变为红跌绿涨
-            color_continuous_scale=['#ff0000', '#ffffff', '#00aa00'], 
+            color_continuous_scale=['#ff0000', '#ffffff', '#00aa00'], # 欧美习惯：红跌绿涨
             color_continuous_midpoint=0,
             range_color=[-10, 10], 
             custom_data=["展示涨跌幅"] 
@@ -89,7 +91,8 @@ with col2:
         fig.update_traces(
             texttemplate="<b>%{label}</b><br>%{customdata[0]}",
             textposition="middle center",
-            textfont=dict(size=32), 
+            # --- 核心修复 2：字号减半，兼顾清晰度与美观（留白） ---
+            textfont=dict(size=16), 
             marker=dict(line=dict(width=2, color='white'))
         )
         
