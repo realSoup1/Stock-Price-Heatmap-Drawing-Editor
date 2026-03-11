@@ -21,28 +21,27 @@ def load_data():
 if "df" not in st.session_state:
     st.session_state.df = load_data()
 
-# --- 新增功能：Excel 数据一键粘贴 ---
+# --- 专属粘贴框 ---
 st.subheader("📋 一键导入 Excel 数据")
 st.caption("使用方法：在 Excel 中选中你的三列数据（包含表头：行业名称、市值、涨跌幅%），复制后粘贴到下方框内即可。")
 
 pasted_data = st.text_area("在此处 `Ctrl+V` 粘贴你的 Excel 数据：", height=100, placeholder="例如：\nAuto\t1196824\t8.4\nBanks\t2019753\t3.1...")
 
-# 处理粘贴的数据
 if pasted_data:
     try:
-        # Excel 复制出来的数据默认是制表符(\t)分隔的
         new_df = pd.read_csv(io.StringIO(pasted_data), sep="\t")
-        # 简单校验列数
         if len(new_df.columns) >= 3:
+            # 只取前三列，防止复制了多余的空白列
+            new_df = new_df.iloc[:, :3]
             new_df.columns = ["行业名称", "市值", "涨跌幅%"]
             st.session_state.df = new_df
-            st.success("✨ 数据导入成功！下方图表已更新。")
+            st.success("✨ 数据导入成功！")
         else:
             st.error("数据格式似乎不对，请确保复制了 3 列数据哦。")
     except Exception as e:
         st.error("解析数据时出现问题，请检查复制的内容格式。")
 
-st.divider() # 添加一条分割线
+st.divider()
 
 # 把页面分成左右两列
 col1, col2 = st.columns([1, 2.5])
@@ -64,34 +63,44 @@ with col2:
     st.subheader("📈 行业热力分布图")
     
     if not edited_df.empty:
-        # 修复 NaN Bug：使用 custom_data 传递具体的涨跌幅数值
+        # --- 核心修复：数据强制清洗，防止 % 和逗号破坏图表 ---
+        plot_df = edited_df.copy()
+        # 利用正则去除非数字字符（保留负号和小数点）
+        plot_df["市值"] = plot_df["市值"].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+        plot_df["市值"] = pd.to_numeric(plot_df["市值"], errors='coerce').fillna(0)
+        
+        plot_df["涨跌幅%"] = plot_df["涨跌幅%"].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+        plot_df["涨跌幅%"] = pd.to_numeric(plot_df["涨跌幅%"], errors='coerce').fillna(0)
+        
+        # 绘制热力图
         fig = px.treemap(
-            edited_df,
+            plot_df,
             path=["行业名称"], 
             values="市值", 
             color="涨跌幅%", 
-            color_continuous_scale=['#00a65a', '#ffffff', '#f56954'], # 优化颜色：更纯正的红绿配色
+            color_continuous_scale=['#00a65a', '#ffffff', '#f56954'], # 纯正红绿配色
             color_continuous_midpoint=0,
-            custom_data=["涨跌幅%"] # 【修复 Bug 的关键点】
+            custom_data=["涨跌幅%"] 
         )
         
-        # 优化美观度：设置字体、自定义数据显示格式、增加白色边框
+        # --- 核心优化：文字自适应大小并居中 ---
         fig.update_traces(
             texttemplate="<b>%{label}</b><br>%{customdata[0]:.2f}%",
-            textfont=dict(size=14), # Plotly 会根据背景颜色自动调整文字颜色（黑/白）以保证可读性
-            marker=dict(line=dict(width=2, color='white')) # 增加白色间隙，提升高级感
+            textposition="middle center", # 强制文字居中
+            # 注意：这里删除了 textfont=dict(size=14)，让引擎自动将文字放到最大！
+            marker=dict(line=dict(width=2, color='white')) # 白色切割线
         )
         
-        # 优化整体布局：去掉灰色背景，调整边距
+        # 优化整体布局
         fig.update_layout(
             margin=dict(t=10, l=0, r=0, b=10),
-            paper_bgcolor="rgba(0,0,0,0)", # 透明背景
-            plot_bgcolor="rgba(0,0,0,0)",  # 透明背景
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
             coloraxis_colorbar=dict(
                 title="涨跌幅(%)", 
                 thickness=15, 
                 len=0.8,
-                bgcolor="rgba(255,255,255,0.7)" # 让右侧图例更优雅
+                bgcolor="rgba(255,255,255,0.7)"
             )
         )
         
