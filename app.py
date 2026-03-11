@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+import textwrap 
 
 # 设置网页标题和布局（宽屏）
 st.set_page_config(page_title="行业热力图编辑器", layout="wide")
 
 st.title("📊 行业市值与涨跌幅热力图")
 
-# 1. 录入初始数据 (带缓存以提升性能)
+# 1. 录入初始数据 
 @st.cache_data
 def load_data():
     return pd.DataFrame({
@@ -17,21 +18,19 @@ def load_data():
         "涨跌幅%": [8.4, 3.1, -1.1, -0.2, 1.4, 8.1, 2.9, -1.5, 2.4, 2.5, 4.2, 2.5, 7.1, 2.2, 3.7, 5.4, 5.7, 3.5, -0.6, -0.5, -5.0, 8.6, 5.4, 3.5, -1.8]
     })
 
-# 初始化数据
 if "df" not in st.session_state:
     st.session_state.df = load_data()
 
 # --- 专属粘贴框 ---
 st.subheader("📋 一键导入 Excel 数据")
-st.caption("使用方法：在 Excel 中选中你的三列数据（包含表头：行业名称、市值、涨跌幅%），复制后粘贴到下方框内即可。")
+st.caption("使用方法：在 Excel 中选中你的三列数据（包含表头），复制后粘贴到下方框内即可。")
 
-pasted_data = st.text_area("在此处 `Ctrl+V` 粘贴你的 Excel 数据：", height=100, placeholder="例如：\nAuto\t1196824\t8.4\nBanks\t2019753\t3.1...")
+pasted_data = st.text_area("在此处 `Ctrl+V` 粘贴你的 Excel 数据：", height=100, placeholder="例如：\nAuto\t1196824\t8.4...")
 
 if pasted_data:
     try:
         new_df = pd.read_csv(io.StringIO(pasted_data), sep="\t")
         if len(new_df.columns) >= 3:
-            # 只取前三列，防止复制了多余的空白列
             new_df = new_df.iloc[:, :3]
             new_df.columns = ["行业名称", "市值", "涨跌幅%"]
             st.session_state.df = new_df
@@ -43,14 +42,11 @@ if pasted_data:
 
 st.divider()
 
-# 把页面分成左右两列
 col1, col2 = st.columns([1, 2.5])
 
 # 左列：数据编辑器
 with col1:
     st.subheader("📝 微调数据")
-    st.caption("提示：表格内的数值依然支持双击修改。")
-    
     edited_df = st.data_editor(
         st.session_state.df,
         num_rows="dynamic",
@@ -63,35 +59,40 @@ with col2:
     st.subheader("📈 行业热力分布图")
     
     if not edited_df.empty:
-        # --- 核心修复：数据强制清洗，防止 % 和逗号破坏图表 ---
         plot_df = edited_df.copy()
-        # 利用正则去除非数字字符（保留负号和小数点）
+        
+        # 数据清洗
         plot_df["市值"] = plot_df["市值"].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         plot_df["市值"] = pd.to_numeric(plot_df["市值"], errors='coerce').fillna(0)
-        
         plot_df["涨跌幅%"] = plot_df["涨跌幅%"].astype(str).str.replace(r'[^\d.-]', '', regex=True)
         plot_df["涨跌幅%"] = pd.to_numeric(plot_df["涨跌幅%"], errors='coerce').fillna(0)
         
+        # 智能换行
+        plot_df["换行名称"] = plot_df["行业名称"].apply(lambda x: "<br>".join(textwrap.wrap(str(x), width=10)))
+        
+        # 给正数加上 '+' 号，保留 1 位小数
+        plot_df["展示涨跌幅"] = plot_df["涨跌幅%"].apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
+
         # 绘制热力图
         fig = px.treemap(
             plot_df,
-            path=["行业名称"], 
+            path=["换行名称"], 
             values="市值", 
             color="涨跌幅%", 
-            color_continuous_scale=['#00a65a', '#ffffff', '#f56954'], # 纯正红绿配色
+            # ✅ 这里的颜色顺序已经反转，变为红跌绿涨
+            color_continuous_scale=['#ff0000', '#ffffff', '#00aa00'], 
             color_continuous_midpoint=0,
-            custom_data=["涨跌幅%"] 
+            range_color=[-10, 10], 
+            custom_data=["展示涨跌幅"] 
         )
         
-        # --- 核心优化：文字自适应大小并居中 ---
         fig.update_traces(
-            texttemplate="<b>%{label}</b><br>%{customdata[0]:.2f}%",
-            textposition="middle center", # 强制文字居中
-            # 注意：这里删除了 textfont=dict(size=14)，让引擎自动将文字放到最大！
-            marker=dict(line=dict(width=2, color='white')) # 白色切割线
+            texttemplate="<b>%{label}</b><br>%{customdata[0]}",
+            textposition="middle center",
+            textfont=dict(size=32), 
+            marker=dict(line=dict(width=2, color='white'))
         )
         
-        # 优化整体布局
         fig.update_layout(
             margin=dict(t=10, l=0, r=0, b=10),
             paper_bgcolor="rgba(0,0,0,0)",
@@ -100,7 +101,9 @@ with col2:
                 title="涨跌幅(%)", 
                 thickness=15, 
                 len=0.8,
-                bgcolor="rgba(255,255,255,0.7)"
+                bgcolor="rgba(255,255,255,0.7)",
+                tickvals=[-10, -5, 0, 5, 10],
+                ticktext=["-10% 及以下", "-5%", "0%", "+5%", "+10% 及以上"]
             )
         )
         
