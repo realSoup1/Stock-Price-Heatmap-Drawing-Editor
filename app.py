@@ -90,7 +90,6 @@ with col2:
         fig.update_traces(
             texttemplate="<b>%{label}</b><br>%{customdata[0]}",
             textposition="middle center",
-            # --- 核心修改：锁定字体为 Arial、黑色、24号 ---
             textfont=dict(
                 family="Arial",
                 size=24,
@@ -104,12 +103,18 @@ with col2:
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
             coloraxis_colorbar=dict(
-                title="涨跌幅(%)", 
+                # --- 核心修改：放大图例标题字号 ---
+                title=dict(
+                    text="涨跌幅(%)",
+                    font=dict(family="Arial", size=22, color="#000000")
+                ),
                 thickness=15, 
                 len=0.8,
                 bgcolor="rgba(255,255,255,0.7)",
                 tickvals=[-10, -5, 0, 5, 10],
-                ticktext=["-10% 及以下", "-5%", "0%", "+5%", "+10% 及以上"]
+                ticktext=["-10% 及以下", "-5%", "0%", "+5%", "+10% 及以上"],
+                # --- 核心修改：放大图例刻度字号 ---
+                tickfont=dict(family="Arial", size=22, color="#000000")
             )
         )
         
